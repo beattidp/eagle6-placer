@@ -1,0 +1,14 @@
+test1/
+tests/fixtures/user-provided/
+
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.agents/mcp_config.json
+.ruff_cache/
+
+# Temporary routing artifacts
+*.dsn
+*.ses
+*.scr.tmp
