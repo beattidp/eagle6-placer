@@ -160,7 +160,35 @@ The `--preview` image displays **BEFORE** (left) and **AFTER** (right) with:
 
 ---
 
-## 8. Troubleshooting
+## 8. MCP Server (`eagle6-placer-mcp`)
+`eagle6-placer` ships an optional decoupled Model Context Protocol (MCP) stdio server for direct AI-agent orchestration alongside `eagle6-mcp` and `eagle6-freerouting`.
+
+### Install MCP Extra
+```bash
+pip install -e '.[mcp]'
+pyenv rehash   # if using pyenv shims
+```
+
+### Exposed MCP Tools
+- **`audit_placement`** — Read-only placement audit (dimensions, locked/unlocked parts, routed-copper guard, initial MST/crossings/congestion, initial violations).
+- **`polish_board`** — Local polish SA with optional mirroring, proximity groups, multi-seed candidates, and Before/After preview; returns output paths and inline `script_content` ready for `eagle6-mcp`'s `validate_edit_script`.
+- **`place_board`** — Coarse-to-fine placement for fresh off-board or scattered `.brd` files.
+
+### Example Client Configuration
+```json
+{
+  "mcpServers": {
+    "eagle6-placer": {
+      "command": "eagle6-placer-mcp",
+      "args": []
+    }
+  }
+}
+```
+
+---
+
+## 9. Troubleshooting
 - **`Error: Unlocked components have existing routed copper: ...`**
   - One or more unlocked components are connected to a non-pour signal net that already has `<wire>` or `<via>` copper. Rip up those traces in EAGLE first, or pass `--allow-routed` if you intend to re-route afterward.
 - **Preview generates `.svg` but no `.png`:**

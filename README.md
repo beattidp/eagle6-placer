@@ -96,6 +96,15 @@ SCRIPT '/absolute/path/to/placer/board_placed.scr';
 
 ---
 
+## MCP Server (`eagle6-placer-mcp`)
+Install the optional MCP extra to expose `audit_placement`, `polish_board`, and `place_board` to AI agents over stdio:
+```bash
+pip install -e '.[mcp]'
+eagle6-placer-mcp
+```
+
+---
+
 ## Documentation
 - **[User Manual](doc/user-manual.md)** — Full CLI reference, tuning guide, `--proximity-group` examples, and troubleshooting.
 - **[Technical Specification](doc/specification.md)** — EAGLE v6 geometry/transform semantics, courtyard rules, and objective formulation.
@@ -116,4 +125,4 @@ pytest -v
 ## Roadmap
 - **Phase 1 (Complete — `v0.1.0-phase1` / `v0.1.1-phase1`):** Local polish Simulated Annealing, keep-side default, soft overlap legalization, pour-net via tolerance, `--proximity-group`, `--preview` (`tPlace`/`bPlace`), `.scr` + JSON emitter, and staged `eagle6-mcp` verification.
 - **Phase 2 (Complete — `v0.2.0-phase2`):** 2D routing congestion grid (`--congestion-weight`), opt-in double-sided mirroring (`--allow-mirror` / `--restrict-mirror` with range syntax), coarse-to-fine `place` subcommand (force-directed + spiral overlap legalization + SA), and multi-seed `--candidates K` with decoupled `candidates_manifest.json`.
-- **Phase 3 (Planned):** Decoupled MCP server (`eagle6-placer-mcp`) for direct AI-agent orchestration.
+- **Phase 3 (Complete — `v0.3.0-phase3`):** Decoupled MCP server (`eagle6-placer-mcp`) exposing `audit_placement`, `polish_board`, and `place_board` over stdio (`pip install -e '.[mcp]'`).

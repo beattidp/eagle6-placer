@@ -1,27 +1,25 @@
 # Project State & Session Handoff
-*Last Updated: 2026-11-25 21:05 MST (-07:00)*
+*Last Updated: 2026-11-25 23:42 MST (-07:00)*
 
 ## 🎯 Current Goal
-- **Phase 2 (`v0.2.0-phase2`) is complete and verified** (40 passing tests): 2D congestion grid, opt-in `--allow-mirror`/`--restrict-mirror` with range syntax, coarse-to-fine `eagle6-placer place`, and multi-seed `--candidates K` with decoupled `candidates_manifest.json`.
+- **Phases 1, 2, and 3 (`v0.3.0-phase3`) are all complete and verified** (43 passing tests): CLI (`polish` & `place`), 2D congestion grid, opt-in `--allow-mirror`/`--restrict-mirror`, soft overlap legalization, `--preview` (`tPlace`/`bPlace`), multi-seed `--candidates` + `candidates_manifest.json`, and decoupled MCP server (`eagle6-placer-mcp`).
 
 ## ✅ Completed Recently
-- **Phase 2 (M2.1–M2.5) Complete (`v0.2.0-phase2`):**
-  - M2.1: 2D routing congestion grid penalty (`cost.py`, `--congestion-weight`).
-  - M2.2: `--allow-mirror [SPEC ...]` / `--restrict-mirror SPEC ...` (`selection.py`, `constraints.py`, `optimizer.py`, `emitter.py`) with verified EAGLE v6.6.0 `MIRROR`/`ROTATE`/`MOVE` output.
-  - M2.3: Coarse-to-fine `eagle6-placer place` (`coarse.py`) + synthetic `tests/fixtures/unplaced_fresh.brd` (`18 → 0` crossings, `7 → 0` violations, `0` DRC errors in EAGLE v6.6.0).
-  - M2.4: Multi-seed `--candidates K` + `--keep-all-candidates` + `candidates_manifest.json` (`candidates.py`).
-  - M2.5: Updated `doc/user-manual.md`, `README.md`, `doc/features/03_phase2-coarse-mirror-congestion.md`, `doc/walkthroughs/2026-11-25_phase2-coarse-place.md` (with hashed `img/unplaced_fresh_preview_ad483ccb.png`), and `doc/worklogs/2026-11-25_phase2-complete.md`.
+- **Phase 3 (`v0.3.0-phase3`):**
+  - Implemented `src/eagle6_placer/mcp_server.py` (`audit_placement`, `polish_board`, `place_board`) compatible with `mcp>=2.0` (`MCPServer`) and `mcp 1.x` (`FastMCP`).
+  - Added optional `[mcp]` dependency extra and `eagle6-placer-mcp` entry point in `pyproject.toml`, refreshed `requirements.txt` (`>=`).
+  - Added `tests/test_mcp_server.py` (`43 passed` in `pytest -v`).
+  - Updated `doc/user-manual.md`, `README.md`, `doc/features/04_phase3-mcp-server.md`, and `doc/worklogs/2026-11-25_phase3-mcp-server.md`.
 
 ## 🚧 In Progress / Blockers
-- Local git history and tags (`v0.1.0-phase1`, `v0.1.1-phase1`, `v0.2.0-phase2`) ready for user review before pushing upstream.
+- Local commits and tags (`v0.2.0-phase2`, `v0.3.0-phase3`) are ready for user review before pushing upstream.
 
 ## ⏭️ Exact Next Step
-1. Review commit log for upstream push, test Phase 2 features (`--allow-mirror`, `--candidates 3`, or `place`) on real boards, or begin Phase 3 planning (decoupled `eagle6-placer-mcp` server).
+1. Review commit history for upstream push (`git push origin main --tags`), optionally register `eagle6-placer-mcp` in the user's MCP client config, or run a closed-loop candidate benchmark combining `eagle6-placer` + `eagle6-mcp` + `eagle6-freerouting`.
 
 ## 📂 Active Files (Do Not Scan Outside These First)
 - `STATE.md`
 - `README.md`
 - `doc/user-manual.md`
-- `doc/features/03_phase2-coarse-mirror-congestion.md`
-- `doc/walkthroughs/2026-11-25_phase2-coarse-place.md`
-- `src/eagle6_placer/cli.py`
+- `doc/features/04_phase3-mcp-server.md`
+- `src/eagle6_placer/mcp_server.py`
