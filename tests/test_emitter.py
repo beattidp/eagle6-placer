@@ -62,3 +62,37 @@ def test_emitter_uses_mr_syntax_for_bottom_parts(
             line.endswith(" 'R1';") or line.endswith(" 'R2';")
         ):
             assert "ROTATE =MR" in line
+
+
+def test_emitter_emits_mirror_rotate_move_on_side_flip(
+    mixed_tht_keepout_brd: Path,
+) -> None:
+    """When a component flips sides, emit MIRROR, ROTATE, and MOVE in sequence."""
+    from eagle6_placer.geometry import ElementTransform
+    from eagle6_placer.optimizer import OptimizationResult
+
+    board = EagleBoardParser().parse(mixed_tht_keepout_brd)
+    init_state = board.initial_state()
+    best_state = init_state.copy()
+    # Flip C1 from top (R180) to bottom (MR90) at (20, 20).
+    best_state.poses["C1"] = ElementTransform(20.0, 20.0, 90.0, mirrored=True)
+
+    dummy_cost = LocalPolishOptimizer(board, PolishConfig(steps=0)).optimize().initial_cost
+    result = OptimizationResult(
+        initial_state=init_state,
+        best_state=best_state,
+        initial_cost=dummy_cost,
+        best_cost=dummy_cost,
+        steps_executed=1,
+        accepted_moves=1,
+        feasible_proposals=1,
+        rejected_infeasible=0,
+        runtime_seconds=0.01,
+        seed=42,
+        final_violations=[],
+    )
+    script = EagleScriptEmitter().render_script(board, result)
+    lines = [ln.strip() for ln in script.splitlines()]
+    idx = lines.index("MIRROR 'C1';")
+    assert lines[idx + 1] == "ROTATE =MR90 'C1';"
+    assert lines[idx + 2] == "MOVE 'C1' (20.0000 20.0000);"

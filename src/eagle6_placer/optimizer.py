@@ -38,6 +38,7 @@ class PolishConfig:
     allow_routed: bool = False
     ignore_pour_copper: bool = True
     allow_mirror: bool = False
+    mirrorable_names: frozenset[str] | None = None
     edge_clearance_mm: float | None = None
     cost_config: CostConfig = field(default_factory=CostConfig)
 
@@ -71,9 +72,15 @@ class LocalPolishOptimizer:
             board=board,
             edge_clearance_mm=self.config.edge_clearance_mm,
             allow_mirror=self.config.allow_mirror,
+            mirrorable_names=self.config.mirrorable_names,
         )
         self.evaluator = RoutabilityEvaluator(
             board=board, config=self.config.cost_config
+        )
+        self._mirrorable_set: frozenset[str] = frozenset(
+            c.name
+            for c in board.unlocked_components
+            if self.checker.can_mirror_component(c)
         )
 
     def optimize(self) -> OptimizationResult:
@@ -249,11 +256,11 @@ class LocalPolishOptimizer:
                     current_state.poses[name_a] = pose_a
                     current_state.poses[name_b] = pose_b
             else:
-                # Single-component move: nudge, rotate, or nudge + rotate.
+                # Single-component move: nudge, rotate, nudge+rotate, or side-flip.
                 name = rng.choice(unlocked)
                 old_pose = current_state.poses[name]
                 cand_pose = self._propose_single_move(
-                    old_pose, move_roll, radius, rng
+                    name, old_pose, move_roll, radius, rng
                 )
                 if cand_pose == old_pose:
                     continue
@@ -321,15 +328,29 @@ class LocalPolishOptimizer:
 
     def _propose_single_move(
         self,
+        name: str,
         pose: ElementTransform,
         move_roll: float,
         radius: float,
         rng: random.Random,
     ) -> ElementTransform:
-        """Propose a grid-snapped nudge, 90° rotation, or combined move."""
+        """Propose a grid-snapped nudge, 90° rotation, combined move, or side flip."""
         grid = self.config.grid_mm
         new_x, new_y = pose.x, pose.y
         new_angle = pose.angle_deg
+        new_mirrored = pose.mirrored
+
+        # Side-flip move (~12% of single-component proposals) for mirror-eligible SMDs.
+        if name in self._mirrorable_set and move_roll >= 0.88:
+            new_mirrored = not pose.mirrored
+            new_angle = rng.choice(ORTHOGONAL_ANGLES)
+            return ElementTransform(
+                x=new_x,
+                y=new_y,
+                angle_deg=new_angle,
+                mirrored=new_mirrored,
+                spin=pose.spin,
+            )
 
         # Nudge component center if move is nudge (0.15..0.60) or nudge+rotate (0.80..1.0).
         if move_roll < 0.60 or move_roll >= 0.80:
@@ -349,7 +370,7 @@ class LocalPolishOptimizer:
             x=new_x,
             y=new_y,
             angle_deg=new_angle,
-            mirrored=pose.mirrored,
+            mirrored=new_mirrored,
             spin=pose.spin,
         )
 

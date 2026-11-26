@@ -17,6 +17,7 @@ from eagle6_placer.optimizer import (
 )
 from eagle6_placer.parser import EagleBoardParser
 from eagle6_placer.preview import PlacementPreviewRenderer, PreviewOptions
+from eagle6_placer.selection import resolve_mirrorable_components
 
 
 def _parse_proximity_groups(raw_groups: list[str] | None) -> tuple[tuple[str, ...], ...]:
@@ -108,6 +109,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Weight per airwire crossing between signal nets (default: 5.0)",
     )
     polish.add_argument(
+        "--congestion-weight",
+        type=float,
+        default=0.5,
+        help="Weight on 2D grid airwire congestion excess penalty (default: 0.5; 0 disables)",
+    )
+    polish.add_argument(
         "--pour-net-weight",
         type=float,
         default=0.05,
@@ -118,6 +125,27 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=250.0,
         help="Soft penalty per pre-existing courtyard/hole overlap during legalization (default: 250.0)",
+    )
+    polish.add_argument(
+        "--allow-mirror",
+        nargs="*",
+        default=None,
+        metavar="PART_SPEC",
+        help=(
+            "Allow Top<->Bottom mirroring for unlocked SMD-only parts. "
+            "With no arguments, allows all unlocked SMDs; with specs, restricts "
+            "to matching parts (supports commas & ranges like '{C1..C12},{C20..C30}')."
+        ),
+    )
+    polish.add_argument(
+        "--restrict-mirror",
+        nargs="+",
+        default=None,
+        metavar="PART_SPEC",
+        help=(
+            "Exclude specific parts from --allow-mirror (supports commas & ranges, "
+            "e.g. --restrict-mirror U1,IC3)."
+        ),
     )
     polish.add_argument(
         "--proximity-group",
@@ -163,10 +191,18 @@ def main(argv: Sequence[str] | None = None) -> int:
 
             cost_cfg = CostConfig(
                 crossing_weight=args.crossing_weight,
+                congestion_weight=args.congestion_weight,
                 displacement_weight=args.displacement_weight,
                 pour_net_weight=args.pour_net_weight,
                 overlap_penalty_weight=args.overlap_penalty,
                 proximity_groups=_parse_proximity_groups(args.proximity_group),
+            )
+            allow_mirror_enabled = args.allow_mirror is not None
+            mirrorable_names = resolve_mirrorable_components(
+                board=board,
+                allow_mirror_enabled=allow_mirror_enabled,
+                allow_specs=args.allow_mirror,
+                restrict_specs=args.restrict_mirror,
             )
             polish_cfg = PolishConfig(
                 steps=args.steps,
@@ -174,7 +210,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 seed=args.seed,
                 allow_routed=args.allow_routed,
                 ignore_pour_copper=not args.strict_routed,
-                allow_mirror=False,
+                allow_mirror=allow_mirror_enabled,
+                mirrorable_names=mirrorable_names,
                 edge_clearance_mm=args.edge_clearance_mm,
                 cost_config=cost_cfg,
             )

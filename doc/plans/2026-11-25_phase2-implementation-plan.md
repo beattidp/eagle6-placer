@@ -75,7 +75,11 @@ src/eagle6_placer/
 
 ---
 
-## Open Scope Questions Before Starting M2.1
-1. **Priority order:** Should we proceed in the order **M2.1 (congestion) → M2.2 (`--allow-mirror`) → M2.3 (`place` coarse-to-fine) → M2.4 (`--candidates`)**, or jump straight to **M2.3 (`place` for freshly created unplaced boards)** first?
-2. **Double-sided mirroring (`--allow-mirror`):** Confirm that `--allow-mirror` should remain **opt-in** (keep-side default) and restricted to **SMD-only** packages (never flipping THT parts).
-3. **Closed-loop `eagle6-freerouting` ranking:** Keep `eagle6-placer` 100% decoupled via `candidates_manifest.json` (orchestrated by the agent/user via `eagle6-mcp` + `eagle6-freerouting`), matching our 3-tool architecture?
+## Confirmed Scope Decisions
+1. **Order:** Sequential (**M2.1 → M2.2 → M2.3 → M2.4 → M2.5**).
+2. **`--allow-mirror` & `--restrict-mirror`:**
+   - Opt-in and restricted to **unlocked SMD-only** packages (never THT).
+   - `--allow-mirror` (no args) allows mirroring all unlocked SMDs.
+   - `--allow-mirror <spec>` restricts mirroring to matching parts, supporting comma lists, bash brace expansion, and range expressions (`{C1..C12},{C20..C30}`, `C1..C12`).
+   - `--restrict-mirror <spec>` excludes matching parts (e.g. `--allow-mirror --restrict-mirror U1,IC3`).
+3. **Closed-loop `eagle6-freerouting` ranking:** 100% decoupled via `candidates_manifest.json` (zero code coupling between `eagle6-placer`, `eagle6-mcp`, and `eagle6-freerouting`).

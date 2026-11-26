@@ -37,6 +37,7 @@ class ConstraintChecker:
         board: BoardModel,
         edge_clearance_mm: float | None = None,
         allow_mirror: bool = False,
+        mirrorable_names: frozenset[str] | None = None,
         hole_clearance_mm: float = 0.25,
     ) -> None:
         self.board = board
@@ -46,7 +47,16 @@ class ConstraintChecker:
             else edge_clearance_mm
         )
         self.allow_mirror = allow_mirror
+        self.mirrorable_names = mirrorable_names
         self.hole_clearance_mm = hole_clearance_mm
+
+    def can_mirror_component(self, comp: Component) -> bool:
+        """Return True if ``comp`` is permitted to flip between top and bottom."""
+        if comp.is_locked or comp.footprint.is_through_hole:
+            return False
+        if self.mirrorable_names is not None:
+            return comp.name in self.mirrorable_names
+        return self.allow_mirror
 
     def _courtyard_conflicts_with_static(
         self, comp: Component, pose: ElementTransform, courtyard: Rect2D
@@ -59,11 +69,14 @@ class ConstraintChecker:
                 detail="Locked component cannot be moved or rotated",
             )
 
-        if not self.allow_mirror and pose.mirrored != comp.initial_pose.mirrored:
+        if (
+            pose.mirrored != comp.initial_pose.mirrored
+            and not self.can_mirror_component(comp)
+        ):
             return ConstraintViolation(
                 kind="side_changed",
                 component=comp.name,
-                detail="Mirroring is disabled in keep-side mode",
+                detail="Mirroring is not permitted for this component",
             )
 
         if not self.board.outline.contains_courtyard(
@@ -114,7 +127,10 @@ class ConstraintChecker:
         comp = self.board.components[name]
         if comp.is_locked and pose != comp.initial_pose:
             return False
-        if not self.allow_mirror and pose.mirrored != comp.initial_pose.mirrored:
+        if (
+            pose.mirrored != comp.initial_pose.mirrored
+            and not self.can_mirror_component(comp)
+        ):
             return False
         courtyard = comp.courtyard_at(pose)
         return self.board.outline.contains_courtyard(

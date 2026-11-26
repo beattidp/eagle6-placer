@@ -16,6 +16,7 @@ Engineering rationale:
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from eagle6_placer.geometry import Point2D, Segment2D, segments_properly_intersect
@@ -53,6 +54,9 @@ class CostConfig:
     crossing_weight: float = 5.0
     displacement_weight: float = 0.1
     proximity_weight: float = 2.0
+    congestion_weight: float = 0.5
+    congestion_cell_mm: float = 2.5
+    congestion_capacity: float = 3.0
     pour_net_weight: float = 0.05
     overlap_penalty_weight: float = 250.0
     high_fanout_threshold: int = 12
@@ -71,6 +75,7 @@ class CostBreakdown:
     total_displacement_mm: float
     proximity_penalty_mm: float
     overlap_violations: int = 0
+    congestion_penalty: float = 0.0
 
 
 def compute_euclidean_mst(points: list[Point2D]) -> tuple[float, list[Segment2D]]:
@@ -217,11 +222,14 @@ class RoutabilityEvaluator:
                 g_len, _ = compute_euclidean_mst(group_pts)
                 prox_penalty += g_len
 
+        congestion_penalty = self._compute_congestion_penalty(non_pour_edges)
+
         total = (
             self.config.wirelength_weight * weighted_wl
             + self.config.crossing_weight * crossings
             + self.config.displacement_weight * displacement
             + self.config.proximity_weight * prox_penalty
+            + self.config.congestion_weight * congestion_penalty
             + self.config.overlap_penalty_weight * overlap_violations
         )
         return CostBreakdown(
@@ -232,4 +240,45 @@ class RoutabilityEvaluator:
             total_displacement_mm=displacement,
             proximity_penalty_mm=prox_penalty,
             overlap_violations=overlap_violations,
+            congestion_penalty=congestion_penalty,
         )
+
+    def _compute_congestion_penalty(
+        self, non_pour_edges: list[tuple[str, Segment2D]]
+    ) -> float:
+        """Compute quadratic excess-demand routing congestion on a coarse 2D grid.
+
+        Each non-pour MST airwire increments the demand of every grid cell it
+        traverses (at most once per segment). Cells whose demand exceeds
+        ``congestion_capacity`` incur ``(demand - capacity)^2`` penalty,
+        discouraging dense routing bottlenecks.
+        """
+        cell = self.config.congestion_cell_mm
+        cap = self.config.congestion_capacity
+        if self.config.congestion_weight <= 0.0 or cell <= 0.0 or not non_pour_edges:
+            return 0.0
+
+        cell_counts: dict[tuple[int, int], int] = {}
+        inv_cell = 1.0 / cell
+        half_cell = 0.5 * cell
+
+        for _, seg in non_pour_edges:
+            dx = seg.p2.x - seg.p1.x
+            dy = seg.p2.y - seg.p1.y
+            length = math.hypot(dx, dy)
+            steps = max(1, int(math.ceil(length / half_cell)))
+            visited: set[tuple[int, int]] = set()
+            for s in range(steps + 1):
+                t = s / steps
+                cx = int(math.floor((seg.p1.x + t * dx) * inv_cell))
+                cy = int(math.floor((seg.p1.y + t * dy) * inv_cell))
+                visited.add((cx, cy))
+            for key in visited:
+                cell_counts[key] = cell_counts.get(key, 0) + 1
+
+        penalty = 0.0
+        for count in cell_counts.values():
+            if count > cap:
+                excess = count - cap
+                penalty += excess * excess
+        return penalty

@@ -41,3 +41,28 @@ def test_pour_net_detection_and_initial_cost(
     eval_mixed = RoutabilityEvaluator(board_mixed, CostConfig())
     assert eval_mixed.is_pour_net("GND")
     assert not eval_mixed.is_pour_net("SIG1")
+
+
+def test_congestion_grid_penalizes_bottleneck(tangled_polish_brd: Path) -> None:
+    """Congestion grid must report positive penalty on clustered tangles and 0 when disabled."""
+    board = EagleBoardParser().parse(tangled_polish_brd)
+    state = board.initial_state()
+
+    eval_on = RoutabilityEvaluator(
+        board,
+        CostConfig(
+            congestion_weight=1.0,
+            congestion_cell_mm=5.0,
+            congestion_capacity=1.0,
+        ),
+    )
+    eval_off = RoutabilityEvaluator(
+        board,
+        CostConfig(congestion_weight=0.0),
+    )
+
+    c_on = eval_on.evaluate(state)
+    c_off = eval_off.evaluate(state)
+    assert c_on.congestion_penalty > 0.0
+    assert c_off.congestion_penalty == 0.0
+    assert c_on.total_cost > c_off.total_cost

@@ -34,6 +34,7 @@ class ComponentDelta:
     displacement_mm: float
     moved: bool
     rotated: bool
+    mirrored_changed: bool = False
 
 
 class EagleScriptEmitter:
@@ -72,8 +73,9 @@ class EagleScriptEmitter:
             init_rot = init_pose.to_eagle_rot()
             new_rot = new_pose.to_eagle_rot()
             rotated = init_rot != new_rot
+            mirrored_changed = new_pose.mirrored != init_pose.mirrored
 
-            if moved or rotated:
+            if moved or rotated or mirrored_changed:
                 deltas.append(
                     ComponentDelta(
                         name=name,
@@ -87,6 +89,7 @@ class EagleScriptEmitter:
                         displacement_mm=round(disp, 4),
                         moved=moved,
                         rotated=rotated,
+                        mirrored_changed=mirrored_changed,
                     )
                 )
         return deltas
@@ -135,10 +138,18 @@ class EagleScriptEmitter:
             # CadSoft EAGLE v6's ROTATE parser misinterprets unquoted resistor
             # designators like R1/R2 as rotation-angle tokens (1 deg, 2 deg)
             # and silently skips rotating the component.
-            if d.rotated:
+            # When a component flips board side, emit MIRROR first, then set
+            # the exact orientation with ROTATE =<rot> and final coordinates
+            # with MOVE so EAGLE's mirror axis cannot shift the target (x, y).
+            if d.mirrored_changed:
+                lines.append(f"MIRROR '{d.name}';")
                 lines.append(f"ROTATE ={d.new_rot} '{d.name}';")
-            if d.moved:
                 lines.append(f"MOVE '{d.name}' ({d.new_x_mm:.4f} {d.new_y_mm:.4f});")
+            else:
+                if d.rotated:
+                    lines.append(f"ROTATE ={d.new_rot} '{d.name}';")
+                if d.moved:
+                    lines.append(f"MOVE '{d.name}' ({d.new_x_mm:.4f} {d.new_y_mm:.4f});")
 
         lines.extend(["RATSNEST;", "GRID LAST;", ""])
         return "\n".join(lines)
