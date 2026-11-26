@@ -1,26 +1,23 @@
 # Project State & Session Handoff
-*Last Updated: 2026-11-25 20:26 MST (-07:00)*
+*Last Updated: 2026-11-25 20:47 MST (-07:00)*
 
 ## 🎯 Current Goal
-- Phase 1.1 (`eagle6-placer` local polish mode + soft overlap legalization + pour-net via tolerance + `--preview`) is complete, verified on synthetic fixtures and `prpp-mcu.brd`, and documented with a full User Manual and GitHub README.
+- **`v0.1.1-phase1`** is tagged and verified (33 passing tests). Now planning and preparing to execute **Phase 2** (`doc/plans/2026-11-25_phase2-implementation-plan.md`): routing congestion grid, opt-in `--allow-mirror`, coarse-to-fine `place` subcommand, and multi-seed `--candidates`.
 
 ## ✅ Completed Recently
-- **Phase 1 & 1.1 Implementation:** All core modules (`geometry.py`, `models.py`, `parser.py`, `constraints.py`, `cost.py`, `optimizer.py`, `emitter.py`, `preview.py`, `cli.py`) and 33 passing unit/integration tests.
-- **Real-Board Benchmark (`prpp-mcu.brd`):** Overlaps `13 → 0`, Weighted MST `513.21 → 436.60 mm`, Raw MST `765.90 → 659.38 mm`, Crossings `62 → 30`, staged EAGLE v6.6.0 DRC passed with 0 new errors.
-- **User Documentation:**
-  - Authored `doc/user-manual.md` (CLI reference, `--proximity-group` guide, verification workflow, troubleshooting).
-  - Rewrote `README.md` for GitHub with before/after visual, 3-tool architecture, quickstart, and roadmap.
-  - Logged in `doc/worklogs/2026-11-25_docs-manual-readme.md`.
+- Bumped package version to `0.1.1` and created local annotated tag `v0.1.1-phase1`.
+- Authored `doc/plans/2026-11-25_phase2-implementation-plan.md` (Milestones 2.1–2.5).
+- Logged in `doc/worklogs/2026-11-25_phase2-planning.md`.
 
 ## 🚧 In Progress / Blockers
-- Local git history ready for user review before pushing upstream.
+- Awaiting user confirmation on Phase 2 milestone order and scope questions (congestion → `--allow-mirror` → `place` coarse-to-fine → `--candidates`).
 
 ## ⏭️ Exact Next Step
-1. Review commit log for upstream push, or begin Phase 2 planning (coarse-to-fine placement, `--allow-mirror`, congestion grid, or `eagle6-freerouting` closed-loop ranking).
+1. Begin Phase 2 Milestone 2.1 (2D routing congestion grid term in `cost.py`) and Milestone 2.2 (`--allow-mirror` with staged EAGLE v6.6.0 `MIRROR` script verification) once the user confirms the plan.
 
 ## 📂 Active Files (Do Not Scan Outside These First)
 - `STATE.md`
-- `README.md`
-- `doc/user-manual.md`
-- `doc/walkthroughs/2026-11-25_prpp-mcu-polish.md`
+- `doc/plans/2026-11-25_phase2-implementation-plan.md`
 - `doc/specification.md`
+- `doc/user-manual.md`
+- `README.md`
