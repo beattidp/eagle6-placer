@@ -39,6 +39,14 @@ def build_parser() -> argparse.ArgumentParser:
             "Optimize unlocked component placement on CadSoft EAGLE v6.6.0 "
             ".brd files and emit human-reviewable .scr scripts."
         ),
+        epilog=(
+            "examples:\n"
+            "  eagle6-placer polish board.brd --preview\n"
+            "  eagle6-placer polish board.brd --preview --proximity-group U1,C1,C2\n\n"
+            "Run 'eagle6-placer <command> -h' (e.g. 'eagle6-placer polish -h') "
+            "to view all options for a subcommand."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--version", action="version", version=f"%(prog)s {__version__}"
