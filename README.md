@@ -96,11 +96,26 @@ SCRIPT '/absolute/path/to/placer/board_placed.scr';
 
 ---
 
-## MCP Server (`eagle6-placer-mcp`)
+## MCP Server & Antigravity Plugin (`eagle6-placer-mcp`)
 Install the optional MCP extra to expose `audit_placement`, `polish_board`, and `place_board` to AI agents over stdio:
 ```bash
 pip install -e '.[mcp]'
 eagle6-placer-mcp
+```
+
+### Install as a Global Antigravity Plugin
+This repository ships a self-contained Antigravity plugin bundle in [`plugin/`](plugin/) (MCP server config, `eagle6-placer` workflow skill, safety rules, and custom `assets/logo.svg` icon).
+
+With your `eagle6-placer` virtualenv active, run:
+```bash
+python scripts/install_antigravity_plugin.py
+```
+This installs the bundle into `~/.gemini/config/plugins/eagle6-placer/` and writes the resolved virtualenv path for `eagle6-placer-mcp` into `mcp_config.json`. *(Use `--dry-run` to preview.)*
+
+If `eagle6-placer-mcp` is already on your global `PATH`, you can alternatively install via the Antigravity CLI:
+```bash
+agy plugin validate ./plugin
+agy plugin install ./plugin
 ```
 
 ---

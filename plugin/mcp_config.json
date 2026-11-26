@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "eagle6-placer": {
+      "command": "eagle6-placer-mcp"
+    }
+  }
+}

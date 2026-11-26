@@ -1,0 +1,13 @@
+{
+  "name": "eagle6-placer",
+  "displayName": "EAGLE v6 Component Auto-Placer",
+  "version": "0.3.0",
+  "description": "Optimize unlocked component placement and orientation on CadSoft EAGLE v6.6.0 .brd files (local polish or coarse-to-fine), emit human-reviewable .scr scripts and Before/After previews, and verify alongside eagle6-mcp and eagle6-freerouting.",
+  "logo": "assets/logo.svg",
+  "repository": "https://github.com/beattidp/eagle6-placer",
+  "suggestedPrompts": [
+    "Audit this EAGLE .brd file for placement quality, locked anchors, and courtyard overlaps",
+    "Polish unlocked component placement on this EAGLE board with a Before/After preview and dry-run the .scr via eagle6-mcp",
+    "Place all off-board components on this fresh EAGLE .brd file using 3 candidates and validate the winner with eagle6-mcp"
+  ]
+}
