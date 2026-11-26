@@ -70,26 +70,31 @@ eagle6-placer polish path/to/my_board.brd \
 
 ---
 
-## 5. CLI Reference (`eagle6-placer polish`)
+## 5. CLI Reference (`eagle6-placer polish` & `eagle6-placer place`)
 
-```text
-eagle6-placer polish <board.brd> [OPTIONS]
-```
+Two subcommands share the same optimization flags:
+- `eagle6-placer polish <board.brd> [OPTIONS]` — Local polish SA on an already-placed board (default `--displacement-weight 0.1`, `--steps 4000`).
+- `eagle6-placer place <board.brd> [OPTIONS]` — Coarse-to-fine placement (force-directed + spiral overlap legalization + SA) for fresh off-board or scattered boards (default `--displacement-weight 0.0`, `--steps 5000`).
 
 | Option | Default | Description |
 | :--- | :--- | :--- |
 | `board` | *(required)* | Path to input CadSoft EAGLE v6.6.0 `.brd` file (read-only). |
-| `--output-dir DIR` | `<board_dir>/placer` | Directory where `.scr`, `.json`, and preview files are written. |
+| `--output-dir DIR` | `<board_dir>/placer` | Directory where `.scr`, `.json`, manifest, and preview files are written. |
 | `--grid-mm FLOAT` | `0.5` | Placement snap grid in millimeters (`0.25`, `0.5`, `1.27`, etc.). |
 | `--courtyard-margin-mm FLOAT` | `0.25` | Uniform expansion (mm) around fallback courtyards for packages lacking explicit `tKeepout`/`bKeepout` shapes. |
 | `--edge-clearance-mm FLOAT` | *(from `.brd`)* | Override copper-to-board-edge clearance in mm (defaults to `mdCopperDimension` in `<designrules>`, or `0.5` mm). |
-| `--steps INT` | `4000` | Number of Simulated Annealing iterations (use `6000`–`10000` for denser 30–60+ part boards). |
-| `--seed INT` | `42` | Deterministic PRNG seed for reproducible runs. |
-| `--displacement-weight FLOAT` | `0.1` | Penalty per mm moved from initial placement. Increase (`0.5`–`1.0`) to keep changes tighter to your original floorplan. |
+| `--steps INT` | `4000` / `5000` | Number of Simulated Annealing iterations (`polish` / `place`). |
+| `--seed INT` | `42` | Deterministic base PRNG seed for reproducible runs. |
+| `--displacement-weight FLOAT` | `0.1` / `0.0` | Penalty per mm moved from initial placement (`polish` / `place`). |
 | `--crossing-weight FLOAT` | `5.0` | Penalty per airwire crossing between distinct non-pour signal nets. |
+| `--congestion-weight FLOAT` | `0.5` | Weight on 2D grid airwire congestion excess penalty (`0` disables). |
 | `--pour-net-weight FLOAT` | `0.05` | Wirelength weight for copper-pour / global power nets (`GND`, `VCC`, `3V3`, `5V`, high-fanout nets, or `<polygon>` nets). |
 | `--overlap-penalty FLOAT` | `250.0` | Soft penalty per pre-existing courtyard/hole overlap during legalization. |
+| `--allow-mirror [PART_SPEC ...]` | *(disabled)* | Allow Top↔Bottom mirroring for unlocked **SMD-only** parts. No args = all unlocked SMDs; with specs = matching parts only (supports commas & ranges like `'{C1..C12},{C20..C30}'`). |
+| `--restrict-mirror PART_SPEC ...` | *(none)* | Exclude specific parts from `--allow-mirror` (e.g., `--allow-mirror --restrict-mirror U1,IC3`). |
 | `--proximity-group PARTS` | *(none)* | Comma-separated component names to pull close together (repeatable, e.g., `--proximity-group U1,C1,C2`). |
+| `--candidates INT` | `1` | Number of sequential seeds to run and rank (`seed`, `seed+1`, ...); writes `candidates_manifest.json` when `> 1`. |
+| `--keep-all-candidates` | `False` | Save individual `.scr`/`.json` files for all `K` candidates under `candidates/` for decoupled closed-loop `eagle6-freerouting` ranking. |
 | `--allow-routed` | `False` | Allow optimizing unlocked components attached to already-routed signal nets. |
 | `--strict-routed` | `False` | Block even if routed copper/vias exist only on copper-pour nets (`GND`, `VMOT`, etc.). |
 | `--preview` | `False` | Emit side-by-side Before/After `_preview.svg` (and `_preview.png` if ImageMagick is installed). |

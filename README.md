@@ -69,6 +69,21 @@ eagle6-placer polish path/to/board.brd \
   --proximity-group U3,C10,C11,R14,R15
 ```
 
+### Coarse-to-Fine Placement (Fresh Unplaced Board + Multi-Seed Candidates)
+```bash
+eagle6-placer place path/to/unplaced_board.brd \
+  --preview \
+  --candidates 3 \
+  --keep-all-candidates
+```
+
+### Opt-In Double-Sided Mirroring (SMD-Only)
+```bash
+# Allow mirroring specific capacitor ranges, or all SMDs except U1/IC3:
+eagle6-placer polish path/to/board.brd --allow-mirror '{C1..C12},{C20..C30}' --preview
+eagle6-placer polish path/to/board.brd --allow-mirror --restrict-mirror U1,IC3 --preview
+```
+
 Outputs are written to `<board_dir>/placer/` (override with `--output-dir`):
 - `<board>_placed.scr` — EAGLE v6.6.0 placement script
 - `<board>_placed.json` — Before/after metrics, audit results, and per-part deltas
@@ -99,6 +114,6 @@ pytest -v
 ---
 
 ## Roadmap
-- **Phase 1 (Complete — `v0.1.0-phase1` + `1.1`):** Local polish Simulated Annealing, keep-side default, soft overlap legalization, pour-net via tolerance, `--proximity-group`, `--preview` (`tPlace`/`bPlace`), `.scr` + JSON emitter, and staged `eagle6-mcp` verification.
-- **Phase 2 (Planned):** Coarse-to-fine placement (force-directed initial layout + legalization), optional double-sided mirroring (`--allow-mirror`), routing congestion grid term, and closed-loop top-$K$ candidate ranking via `eagle6-freerouting`.
+- **Phase 1 (Complete — `v0.1.0-phase1` / `v0.1.1-phase1`):** Local polish Simulated Annealing, keep-side default, soft overlap legalization, pour-net via tolerance, `--proximity-group`, `--preview` (`tPlace`/`bPlace`), `.scr` + JSON emitter, and staged `eagle6-mcp` verification.
+- **Phase 2 (Complete — `v0.2.0-phase2`):** 2D routing congestion grid (`--congestion-weight`), opt-in double-sided mirroring (`--allow-mirror` / `--restrict-mirror` with range syntax), coarse-to-fine `place` subcommand (force-directed + spiral overlap legalization + SA), and multi-seed `--candidates K` with decoupled `candidates_manifest.json`.
 - **Phase 3 (Planned):** Decoupled MCP server (`eagle6-placer-mcp`) for direct AI-agent orchestration.

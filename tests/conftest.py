@@ -23,3 +23,9 @@ def tangled_polish_brd() -> Path:
 def mixed_tht_keepout_brd() -> Path:
     """Return path to the mixed THT/SMD + keepout + pour .brd fixture."""
     return FIXTURES_DIR / "mixed_tht_keepout.brd"
+
+
+@pytest.fixture
+def unplaced_fresh_brd() -> Path:
+    """Return path to the fresh off-board unplaced .brd fixture."""
+    return FIXTURES_DIR / "unplaced_fresh.brd"

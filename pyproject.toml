@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eagle6-placer"
-version = "0.1.1"
+version = "0.2.0"
 description = "Standalone component auto-placement optimizer for CadSoft EAGLE v6.6.0 XML board files (.brd)."
 readme = "README.md"
 requires-python = ">=3.10"

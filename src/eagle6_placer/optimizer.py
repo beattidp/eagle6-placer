@@ -83,8 +83,17 @@ class LocalPolishOptimizer:
             if self.checker.can_mirror_component(c)
         )
 
-    def optimize(self) -> OptimizationResult:
-        """Run deterministic local polish SA and return the best feasible result."""
+    def optimize(
+        self, starting_state: PlacementState | None = None
+    ) -> OptimizationResult:
+        """Run deterministic SA refinement and return the best feasible result.
+
+        Args:
+            starting_state: Optional pre-legalized starting placement (e.g.
+                from ``CoarsePlacer`` in ``place`` mode). ``initial_state`` and
+                ``initial_cost`` in the returned ``OptimizationResult`` still
+                record the original ``.brd`` placement for accurate deltas.
+        """
         t0 = time.perf_counter()
 
         routed_unlocked = self.board.routed_unlocked_components(
@@ -98,15 +107,21 @@ class LocalPolishOptimizer:
             )
 
         initial_state = self.board.initial_state()
-        current_state = initial_state.copy()
-        current_violations = len(self.checker.audit_state(initial_state))
+        initial_violations = len(self.checker.audit_state(initial_state))
         initial_cost = self.evaluator.evaluate(
-            initial_state, overlap_violations=current_violations
+            initial_state, overlap_violations=initial_violations
         )
-        current_cost = initial_cost
 
-        best_state = initial_state.copy()
-        best_cost = initial_cost
+        current_state = (
+            starting_state.copy() if starting_state is not None else initial_state.copy()
+        )
+        current_violations = len(self.checker.audit_state(current_state))
+        current_cost = self.evaluator.evaluate(
+            current_state, overlap_violations=current_violations
+        )
+
+        best_state = current_state.copy()
+        best_cost = current_cost
         best_violations = current_violations
 
         unlocked = [c.name for c in self.board.unlocked_components]

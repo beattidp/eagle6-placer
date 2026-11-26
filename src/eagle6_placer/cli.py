@@ -8,19 +8,18 @@ from pathlib import Path
 from typing import Sequence
 
 from eagle6_placer import __version__
+from eagle6_placer.candidates import MultiSeedRunner, PlacementMode
 from eagle6_placer.cost import CostConfig
 from eagle6_placer.emitter import EagleScriptEmitter
-from eagle6_placer.optimizer import (
-    LocalPolishOptimizer,
-    PolishConfig,
-    RoutedCopperError,
-)
+from eagle6_placer.optimizer import PolishConfig, RoutedCopperError
 from eagle6_placer.parser import EagleBoardParser
 from eagle6_placer.preview import PlacementPreviewRenderer, PreviewOptions
 from eagle6_placer.selection import resolve_mirrorable_components
 
 
-def _parse_proximity_groups(raw_groups: list[str] | None) -> tuple[tuple[str, ...], ...]:
+def _parse_proximity_groups(
+    raw_groups: list[str] | None,
+) -> tuple[tuple[str, ...], ...]:
     """Parse ``--proximity-group C1,U1`` arguments into tuples of part names."""
     if not raw_groups:
         return ()
@@ -30,6 +29,140 @@ def _parse_proximity_groups(raw_groups: list[str] | None) -> tuple[tuple[str, ..
         if len(parts) >= 2:
             groups.append(parts)
     return tuple(groups)
+
+
+def _add_common_placement_args(
+    sub: argparse.ArgumentParser,
+    *,
+    default_displacement_weight: float,
+    default_steps: int,
+) -> None:
+    """Attach shared placement, constraint, mirror, candidate, and preview flags."""
+    sub.add_argument("board", type=Path, help="Path to input EAGLE v6.6.0 .brd file")
+    sub.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+        help="Output directory for .scr, .json, and preview files (default: <board_dir>/placer)",
+    )
+    sub.add_argument(
+        "--grid-mm",
+        type=float,
+        default=0.5,
+        help="Placement snap grid in mm (default: 0.5)",
+    )
+    sub.add_argument(
+        "--courtyard-margin-mm",
+        type=float,
+        default=0.25,
+        help="Fallback courtyard margin in mm (default: 0.25)",
+    )
+    sub.add_argument(
+        "--edge-clearance-mm",
+        type=float,
+        default=None,
+        help="Override board-edge clearance in mm (default: from <designrules>)",
+    )
+    sub.add_argument(
+        "--steps",
+        type=int,
+        default=default_steps,
+        help=f"Number of Simulated Annealing iterations (default: {default_steps})",
+    )
+    sub.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Deterministic base PRNG seed (default: 42)",
+    )
+    sub.add_argument(
+        "--displacement-weight",
+        type=float,
+        default=default_displacement_weight,
+        help=f"Weight on displacement from initial positions (default: {default_displacement_weight})",
+    )
+    sub.add_argument(
+        "--crossing-weight",
+        type=float,
+        default=5.0,
+        help="Weight per airwire crossing between signal nets (default: 5.0)",
+    )
+    sub.add_argument(
+        "--congestion-weight",
+        type=float,
+        default=0.5,
+        help="Weight on 2D grid airwire congestion excess penalty (default: 0.5; 0 disables)",
+    )
+    sub.add_argument(
+        "--pour-net-weight",
+        type=float,
+        default=0.05,
+        help="Wirelength weight for global/pour nets such as GND/VCC (default: 0.05)",
+    )
+    sub.add_argument(
+        "--overlap-penalty",
+        type=float,
+        default=250.0,
+        help="Soft penalty per pre-existing courtyard/hole overlap during legalization (default: 250.0)",
+    )
+    sub.add_argument(
+        "--allow-mirror",
+        nargs="*",
+        default=None,
+        metavar="PART_SPEC",
+        help=(
+            "Allow Top<->Bottom mirroring for unlocked SMD-only parts. "
+            "With no arguments, allows all unlocked SMDs; with specs, restricts "
+            "to matching parts (supports commas & ranges like '{C1..C12},{C20..C30}')."
+        ),
+    )
+    sub.add_argument(
+        "--restrict-mirror",
+        nargs="+",
+        default=None,
+        metavar="PART_SPEC",
+        help=(
+            "Exclude specific parts from --allow-mirror (supports commas & ranges, "
+            "e.g. --restrict-mirror U1,IC3)."
+        ),
+    )
+    sub.add_argument(
+        "--proximity-group",
+        action="append",
+        default=None,
+        help="Comma-separated component names to keep close (repeatable, e.g. C1,U1)",
+    )
+    sub.add_argument(
+        "--candidates",
+        type=int,
+        default=1,
+        help="Number of sequential seeds to evaluate and rank (default: 1)",
+    )
+    sub.add_argument(
+        "--keep-all-candidates",
+        action="store_true",
+        help="Write individual .scr/.json files for every candidate in candidates/ alongside candidates_manifest.json",
+    )
+    sub.add_argument(
+        "--allow-routed",
+        action="store_true",
+        help="Allow optimizing unlocked parts attached to already-routed signal copper",
+    )
+    sub.add_argument(
+        "--strict-routed",
+        action="store_true",
+        help="Also block on existing vias/stubs belonging to copper-pour nets (default ignores pour-net vias)",
+    )
+    sub.add_argument(
+        "--preview",
+        action="store_true",
+        help="Write side-by-side Before/After SVG (and PNG when ImageMagick is installed) preview",
+    )
+    sub.add_argument(
+        "--hide-place",
+        action="store_true",
+        help="Hide tPlace/bPlace silkscreen outlines in --preview output",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -43,9 +176,10 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=(
             "examples:\n"
             "  eagle6-placer polish board.brd --preview\n"
-            "  eagle6-placer polish board.brd --preview --proximity-group U1,C1,C2\n\n"
-            "Run 'eagle6-placer <command> -h' (e.g. 'eagle6-placer polish -h') "
-            "to view all options for a subcommand."
+            "  eagle6-placer polish board.brd --preview --proximity-group U1,C1,C2\n"
+            "  eagle6-placer place unplaced.brd --preview --candidates 3\n\n"
+            "Run 'eagle6-placer <command> -h' (e.g. 'eagle6-placer polish -h' or "
+            "'eagle6-placer place -h') to view all options for a subcommand."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -57,121 +191,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     polish = subparsers.add_parser(
         "polish",
-        help="Run local polish Simulated Annealing (keep-side default) on a .brd file.",
+        help="Run local polish Simulated Annealing on an already-placed .brd file.",
     )
-    polish.add_argument("board", type=Path, help="Path to input EAGLE v6.6.0 .brd file")
-    polish.add_argument(
-        "--output-dir",
-        type=Path,
-        default=None,
-        help="Output directory for .scr and .json files (default: <board_dir>/placer)",
+    _add_common_placement_args(
+        polish, default_displacement_weight=0.1, default_steps=4000
     )
-    polish.add_argument(
-        "--grid-mm",
-        type=float,
-        default=0.5,
-        help="Placement snap grid in mm (default: 0.5)",
+
+    place = subparsers.add_parser(
+        "place",
+        help="Run coarse-to-fine placement (force-directed + legalization + SA) for unplaced/scattered boards.",
     )
-    polish.add_argument(
-        "--courtyard-margin-mm",
-        type=float,
-        default=0.25,
-        help="Fallback courtyard margin in mm (default: 0.25)",
-    )
-    polish.add_argument(
-        "--edge-clearance-mm",
-        type=float,
-        default=None,
-        help="Override board-edge clearance in mm (default: from <designrules>)",
-    )
-    polish.add_argument(
-        "--steps",
-        type=int,
-        default=4000,
-        help="Number of Simulated Annealing iterations (default: 4000)",
-    )
-    polish.add_argument(
-        "--seed",
-        type=int,
-        default=42,
-        help="Deterministic PRNG seed (default: 42)",
-    )
-    polish.add_argument(
-        "--displacement-weight",
-        type=float,
-        default=0.1,
-        help="Weight on displacement from initial positions (default: 0.1)",
-    )
-    polish.add_argument(
-        "--crossing-weight",
-        type=float,
-        default=5.0,
-        help="Weight per airwire crossing between signal nets (default: 5.0)",
-    )
-    polish.add_argument(
-        "--congestion-weight",
-        type=float,
-        default=0.5,
-        help="Weight on 2D grid airwire congestion excess penalty (default: 0.5; 0 disables)",
-    )
-    polish.add_argument(
-        "--pour-net-weight",
-        type=float,
-        default=0.05,
-        help="Wirelength weight for global/pour nets such as GND/VCC (default: 0.05)",
-    )
-    polish.add_argument(
-        "--overlap-penalty",
-        type=float,
-        default=250.0,
-        help="Soft penalty per pre-existing courtyard/hole overlap during legalization (default: 250.0)",
-    )
-    polish.add_argument(
-        "--allow-mirror",
-        nargs="*",
-        default=None,
-        metavar="PART_SPEC",
-        help=(
-            "Allow Top<->Bottom mirroring for unlocked SMD-only parts. "
-            "With no arguments, allows all unlocked SMDs; with specs, restricts "
-            "to matching parts (supports commas & ranges like '{C1..C12},{C20..C30}')."
-        ),
-    )
-    polish.add_argument(
-        "--restrict-mirror",
-        nargs="+",
-        default=None,
-        metavar="PART_SPEC",
-        help=(
-            "Exclude specific parts from --allow-mirror (supports commas & ranges, "
-            "e.g. --restrict-mirror U1,IC3)."
-        ),
-    )
-    polish.add_argument(
-        "--proximity-group",
-        action="append",
-        default=None,
-        help="Comma-separated component names to keep close (repeatable, e.g. C1,U1)",
-    )
-    polish.add_argument(
-        "--allow-routed",
-        action="store_true",
-        help="Allow optimizing unlocked parts attached to already-routed signal copper",
-    )
-    polish.add_argument(
-        "--strict-routed",
-        action="store_true",
-        help="Also block on existing vias/stubs belonging to copper-pour nets (default ignores pour-net vias)",
-    )
-    polish.add_argument(
-        "--preview",
-        action="store_true",
-        help="Write side-by-side Before/After SVG (and PNG when ImageMagick is installed) preview",
-    )
-    polish.add_argument(
-        "--hide-place",
-        action="store_true",
-        help="Hide tPlace/bPlace silkscreen outlines in --preview output",
+    _add_common_placement_args(
+        place, default_displacement_weight=0.0, default_steps=5000
     )
 
     return parser
@@ -182,7 +213,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    if args.command == "polish":
+    if args.command in ("polish", "place"):
+        mode: PlacementMode = args.command
         try:
             board_parser = EagleBoardParser(
                 courtyard_margin_mm=args.courtyard_margin_mm
@@ -216,8 +248,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 cost_config=cost_cfg,
             )
 
-            optimizer = LocalPolishOptimizer(board, polish_cfg)
-            result = optimizer.optimize()
+            runner = MultiSeedRunner(board, polish_cfg, mode=mode)
+            multi = runner.run(
+                num_candidates=args.candidates,
+                output_dir=args.output_dir,
+                keep_all_candidates=args.keep_all_candidates,
+            )
+            result = multi.best_result
 
             emitter = EagleScriptEmitter()
             script_path, report_path = emitter.write_outputs(
@@ -242,9 +279,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         init_c = result.initial_cost
         best_c = result.best_cost
         deltas = emitter.compute_deltas(board, result)
-        print(f"Board:      {board.source_path.name} (EAGLE {board.eagle_version})")
+        print(f"Board:        {board.source_path.name} (EAGLE {board.eagle_version}, mode={mode})")
         print(
-            f"Components: {len(board.components)} total "
+            f"Components:   {len(board.components)} total "
             f"({len(board.locked_components)} locked, "
             f"{len(board.unlocked_components)} unlocked, "
             f"{len(deltas)} modified)"
@@ -261,12 +298,20 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"Crossings:    {init_c.airwire_crossings} -> {best_c.airwire_crossings}"
         )
         print(
+            f"Congestion:   {init_c.congestion_penalty:.2f} -> {best_c.congestion_penalty:.2f}"
+        )
+        print(
             f"Overlaps:     {init_c.overlap_violations} -> {best_c.overlap_violations}"
         )
         print(f"Total cost:   {init_c.total_cost:.2f} -> {best_c.total_cost:.2f}")
         print(
             f"Audit:        {'PASS (0 violations)' if not result.final_violations else f'FAIL ({len(result.final_violations)} violations)'}"
         )
+        if multi.manifest_path is not None:
+            print(
+                f"Candidates:   {len(multi.records)} evaluated (best seed={result.seed}); "
+                f"manifest={multi.manifest_path}"
+            )
         print(f"Script:       {script_path}")
         print(f"Report:       {report_path}")
         if preview_svg is not None:
