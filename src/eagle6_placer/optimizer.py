@@ -36,6 +36,7 @@ class PolishConfig:
     t_end: float = 0.05
     max_nudge_mm: float | None = None
     allow_routed: bool = False
+    ignore_pour_copper: bool = True
     allow_mirror: bool = False
     edge_clearance_mm: float | None = None
     cost_config: CostConfig = field(default_factory=CostConfig)
@@ -79,7 +80,9 @@ class LocalPolishOptimizer:
         """Run deterministic local polish SA and return the best feasible result."""
         t0 = time.perf_counter()
 
-        routed_unlocked = self.board.routed_unlocked_components()
+        routed_unlocked = self.board.routed_unlocked_components(
+            ignore_pour_nets=self.config.ignore_pour_copper
+        )
         if routed_unlocked and not self.config.allow_routed:
             raise RoutedCopperError(
                 "Unlocked components have existing routed copper: "
@@ -89,11 +92,15 @@ class LocalPolishOptimizer:
 
         initial_state = self.board.initial_state()
         current_state = initial_state.copy()
-        initial_cost = self.evaluator.evaluate(initial_state)
+        current_violations = len(self.checker.audit_state(initial_state))
+        initial_cost = self.evaluator.evaluate(
+            initial_state, overlap_violations=current_violations
+        )
         current_cost = initial_cost
 
         best_state = initial_state.copy()
         best_cost = initial_cost
+        best_violations = current_violations
 
         unlocked = [c.name for c in self.board.unlocked_components]
         if not unlocked or self.config.steps <= 0:
@@ -169,24 +176,75 @@ class LocalPolishOptimizer:
                     spin=pose_b.spin,
                 )
 
-                if not self.checker.is_swap_valid(
-                    name_a, cand_a, name_b, cand_b, current_state
-                ):
-                    infeasible += 1
-                    continue
+                if current_violations == 0:
+                    if not self.checker.is_swap_valid(
+                        name_a, cand_a, name_b, cand_b, current_state
+                    ):
+                        infeasible += 1
+                        continue
+                    cand_violations = 0
+                else:
+                    if not (
+                        self.checker.is_component_hard_valid(name_a, cand_a)
+                        and self.checker.is_component_hard_valid(name_b, cand_b)
+                    ):
+                        infeasible += 1
+                        continue
+                    ignore = {name_a, name_b}
+                    old_v = (
+                        self.checker.count_component_soft_violations(
+                            name_a, pose_a, current_state, ignore_names=ignore
+                        )
+                        + self.checker.count_component_soft_violations(
+                            name_b, pose_b, current_state, ignore_names=ignore
+                        )
+                    )
+                    new_v = (
+                        self.checker.count_component_soft_violations(
+                            name_a, cand_a, current_state, ignore_names=ignore
+                        )
+                        + self.checker.count_component_soft_violations(
+                            name_b, cand_b, current_state, ignore_names=ignore
+                        )
+                    )
+                    # Check mutual overlap between A and B at old vs new poses.
+                    comp_a = self.board.components[name_a]
+                    comp_b = self.board.components[name_b]
+                    if any(
+                        s in comp_b.occupied_sides(pose_b)
+                        for s in comp_a.occupied_sides(pose_a)
+                    ) and comp_a.courtyard_at(pose_a).overlaps(
+                        comp_b.courtyard_at(pose_b)
+                    ):
+                        old_v += 1
+                    if any(
+                        s in comp_b.occupied_sides(cand_b)
+                        for s in comp_a.occupied_sides(cand_a)
+                    ) and comp_a.courtyard_at(cand_a).overlaps(
+                        comp_b.courtyard_at(cand_b)
+                    ):
+                        new_v += 1
+                    cand_violations = current_violations - old_v + new_v
+                    if cand_violations > current_violations:
+                        infeasible += 1
+                        continue
 
                 feasible += 1
                 current_state.poses[name_a] = cand_a
                 current_state.poses[name_b] = cand_b
-                cand_cost = self.evaluator.evaluate(current_state)
+                cand_cost = self.evaluator.evaluate(
+                    current_state, overlap_violations=cand_violations
+                )
                 delta = cand_cost.total_cost - current_cost.total_cost
 
                 if delta <= 0.0 or rng.random() < math.exp(-delta / temp):
                     current_cost = cand_cost
+                    current_violations = cand_violations
                     accepted += 1
                     if cand_cost.total_cost < best_cost.total_cost:
                         best_cost = cand_cost
                         best_state = current_state.copy()
+                        best_violations = cand_violations
                 else:
                     current_state.poses[name_a] = pose_a
                     current_state.poses[name_b] = pose_b
@@ -200,30 +258,50 @@ class LocalPolishOptimizer:
                 if cand_pose == old_pose:
                     continue
 
-                if not self.checker.is_component_pose_valid(
-                    name, cand_pose, current_state
-                ):
-                    infeasible += 1
-                    continue
+                if current_violations == 0:
+                    if not self.checker.is_component_pose_valid(
+                        name, cand_pose, current_state
+                    ):
+                        infeasible += 1
+                        continue
+                    cand_violations = 0
+                else:
+                    if not self.checker.is_component_hard_valid(name, cand_pose):
+                        infeasible += 1
+                        continue
+                    old_v = self.checker.count_component_soft_violations(
+                        name, old_pose, current_state
+                    )
+                    new_v = self.checker.count_component_soft_violations(
+                        name, cand_pose, current_state
+                    )
+                    cand_violations = current_violations - old_v + new_v
+                    if cand_violations > current_violations:
+                        infeasible += 1
+                        continue
 
                 feasible += 1
                 current_state.poses[name] = cand_pose
-                cand_cost = self.evaluator.evaluate(current_state)
+                cand_cost = self.evaluator.evaluate(
+                    current_state, overlap_violations=cand_violations
+                )
                 delta = cand_cost.total_cost - current_cost.total_cost
 
                 if delta <= 0.0 or rng.random() < math.exp(-delta / temp):
                     current_cost = cand_cost
+                    current_violations = cand_violations
                     accepted += 1
                     if cand_cost.total_cost < best_cost.total_cost:
                         best_cost = cand_cost
                         best_state = current_state.copy()
+                        best_violations = cand_violations
                 else:
                     current_state.poses[name] = old_pose
 
         # Final greedy orientation polish pass over every unlocked component
         # to eliminate any trivial residual 90-degree rotation suboptimality.
         best_state, best_cost = self._greedy_rotation_pass(
-            best_state, best_cost, unlocked
+            best_state, best_cost, best_violations, unlocked
         )
 
         elapsed = time.perf_counter() - t0
@@ -279,11 +357,13 @@ class LocalPolishOptimizer:
         self,
         state: PlacementState,
         cost: CostBreakdown,
+        violations: int,
         unlocked_names: list[str],
     ) -> tuple[PlacementState, CostBreakdown]:
         """Deterministic final pass testing all 4 orthogonal angles per part."""
         best_state = state.copy()
         best_cost = cost
+        best_v = violations
         for name in unlocked_names:
             orig_pose = best_state.poses[name]
             best_pose = orig_pose
@@ -297,14 +377,31 @@ class LocalPolishOptimizer:
                     mirrored=orig_pose.mirrored,
                     spin=orig_pose.spin,
                 )
-                if not self.checker.is_component_pose_valid(
-                    name, cand_pose, best_state
-                ):
-                    continue
+                if best_v == 0:
+                    if not self.checker.is_component_pose_valid(
+                        name, cand_pose, best_state
+                    ):
+                        continue
+                    cand_v = 0
+                else:
+                    if not self.checker.is_component_hard_valid(name, cand_pose):
+                        continue
+                    old_v = self.checker.count_component_soft_violations(
+                        name, orig_pose, best_state
+                    )
+                    new_v = self.checker.count_component_soft_violations(
+                        name, cand_pose, best_state
+                    )
+                    cand_v = best_v - old_v + new_v
+                    if cand_v > best_v:
+                        continue
                 best_state.poses[name] = cand_pose
-                cand_cost = self.evaluator.evaluate(best_state)
+                cand_cost = self.evaluator.evaluate(
+                    best_state, overlap_violations=cand_v
+                )
                 if cand_cost.total_cost < best_cost.total_cost - 1e-9:
                     best_cost = cand_cost
                     best_pose = cand_pose
+                    best_v = cand_v
             best_state.poses[name] = best_pose
         return best_state, best_cost

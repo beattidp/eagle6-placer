@@ -54,6 +54,7 @@ class CostConfig:
     displacement_weight: float = 0.1
     proximity_weight: float = 2.0
     pour_net_weight: float = 0.05
+    overlap_penalty_weight: float = 250.0
     high_fanout_threshold: int = 12
     pour_net_names: tuple[str, ...] = DEFAULT_POUR_NET_NAMES
     proximity_groups: tuple[tuple[str, ...], ...] = ()
@@ -69,6 +70,7 @@ class CostBreakdown:
     airwire_crossings: int
     total_displacement_mm: float
     proximity_penalty_mm: float
+    overlap_violations: int = 0
 
 
 def compute_euclidean_mst(points: list[Point2D]) -> tuple[float, list[Segment2D]]:
@@ -153,7 +155,9 @@ class RoutabilityEvaluator:
             return False
         return self._is_pour_or_global_net(net)
 
-    def evaluate(self, state: PlacementState) -> CostBreakdown:
+    def evaluate(
+        self, state: PlacementState, overlap_violations: int = 0
+    ) -> CostBreakdown:
         """Compute the full ``CostBreakdown`` for ``state``."""
         weighted_wl = 0.0
         raw_wl = 0.0
@@ -218,6 +222,7 @@ class RoutabilityEvaluator:
             + self.config.crossing_weight * crossings
             + self.config.displacement_weight * displacement
             + self.config.proximity_weight * prox_penalty
+            + self.config.overlap_penalty_weight * overlap_violations
         )
         return CostBreakdown(
             total_cost=total,
@@ -226,4 +231,5 @@ class RoutabilityEvaluator:
             airwire_crossings=crossings,
             total_displacement_mm=displacement,
             proximity_penalty_mm=prox_penalty,
+            overlap_violations=overlap_violations,
         )

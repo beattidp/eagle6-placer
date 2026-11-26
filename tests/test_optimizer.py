@@ -91,3 +91,53 @@ def test_routed_copper_guard(tmp_path: Path, tangled_polish_brd: Path) -> None:
         board, PolishConfig(steps=50, allow_routed=True)
     ).optimize()
     assert result.final_violations == []
+
+
+def test_pour_net_via_ignored_by_default_and_blocked_when_strict(
+    tmp_path: Path, mixed_tht_keepout_brd: Path
+) -> None:
+    """Pour-net vias are tolerated by default, but blocked when ignore_pour_copper=False."""
+    raw_xml = mixed_tht_keepout_brd.read_text(encoding="utf-8")
+    pour_via_xml = raw_xml.replace(
+        '<signal name="GND">',
+        '<signal name="GND">\n<via x="30" y="20" extent="1-16" drill="0.6"/>',
+    )
+    brd = tmp_path / "pour_via.brd"
+    brd.write_text(pour_via_xml, encoding="utf-8")
+
+    board = EagleBoardParser().parse(brd)
+    assert board.routed_unlocked_components(ignore_pour_nets=True) == []
+    assert "C1" in board.routed_unlocked_components(ignore_pour_nets=False)
+
+    # Default succeeds without allow_routed.
+    res = LocalPolishOptimizer(board, PolishConfig(steps=50)).optimize()
+    assert res.final_violations == []
+
+    # Strict mode raises RoutedCopperError.
+    with pytest.raises(RoutedCopperError):
+        LocalPolishOptimizer(
+            board, PolishConfig(steps=50, ignore_pour_copper=False)
+        ).optimize()
+
+
+def test_soft_overlap_legalization_resolves_preexisting_overlaps(
+    tmp_path: Path, tangled_polish_brd: Path
+) -> None:
+    """Pre-existing courtyard overlaps must be actively pushed apart to 0 violations."""
+    raw_xml = tangled_polish_brd.read_text(encoding="utf-8")
+    # Force R2 right on top of R1 at (15, 10) to create an initial overlap.
+    overlap_xml = raw_xml.replace(
+        '<element name="R2" library="synthetic" package="R0805" value="10k" x="15" y="30" rot="R180"/>',
+        '<element name="R2" library="synthetic" package="R0805" value="10k" x="15.5" y="10" rot="R180"/>',
+    )
+    brd = tmp_path / "overlap.brd"
+    brd.write_text(overlap_xml, encoding="utf-8")
+
+    board = EagleBoardParser().parse(brd)
+    result = LocalPolishOptimizer(
+        board, PolishConfig(steps=1500, grid_mm=0.5, seed=42)
+    ).optimize()
+
+    assert result.initial_cost.overlap_violations >= 1
+    assert result.best_cost.overlap_violations == 0
+    assert result.final_violations == []

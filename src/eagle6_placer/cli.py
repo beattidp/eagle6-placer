@@ -16,6 +16,7 @@ from eagle6_placer.optimizer import (
     RoutedCopperError,
 )
 from eagle6_placer.parser import EagleBoardParser
+from eagle6_placer.preview import PlacementPreviewRenderer, PreviewOptions
 
 
 def _parse_proximity_groups(raw_groups: list[str] | None) -> tuple[tuple[str, ...], ...]:
@@ -105,6 +106,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Wirelength weight for global/pour nets such as GND/VCC (default: 0.05)",
     )
     polish.add_argument(
+        "--overlap-penalty",
+        type=float,
+        default=250.0,
+        help="Soft penalty per pre-existing courtyard/hole overlap during legalization (default: 250.0)",
+    )
+    polish.add_argument(
         "--proximity-group",
         action="append",
         default=None,
@@ -113,7 +120,22 @@ def build_parser() -> argparse.ArgumentParser:
     polish.add_argument(
         "--allow-routed",
         action="store_true",
-        help="Allow optimizing unlocked parts attached to already-routed copper",
+        help="Allow optimizing unlocked parts attached to already-routed signal copper",
+    )
+    polish.add_argument(
+        "--strict-routed",
+        action="store_true",
+        help="Also block on existing vias/stubs belonging to copper-pour nets (default ignores pour-net vias)",
+    )
+    polish.add_argument(
+        "--preview",
+        action="store_true",
+        help="Write side-by-side Before/After SVG (and PNG when ImageMagick is installed) preview",
+    )
+    polish.add_argument(
+        "--hide-place",
+        action="store_true",
+        help="Hide tPlace/bPlace silkscreen outlines in --preview output",
     )
 
     return parser
@@ -135,6 +157,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 crossing_weight=args.crossing_weight,
                 displacement_weight=args.displacement_weight,
                 pour_net_weight=args.pour_net_weight,
+                overlap_penalty_weight=args.overlap_penalty,
                 proximity_groups=_parse_proximity_groups(args.proximity_group),
             )
             polish_cfg = PolishConfig(
@@ -142,6 +165,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 grid_mm=args.grid_mm,
                 seed=args.seed,
                 allow_routed=args.allow_routed,
+                ignore_pour_copper=not args.strict_routed,
                 allow_mirror=False,
                 edge_clearance_mm=args.edge_clearance_mm,
                 cost_config=cost_cfg,
@@ -154,6 +178,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             script_path, report_path = emitter.write_outputs(
                 board, result, output_dir=args.output_dir
             )
+
+            preview_svg: Path | None = None
+            preview_png: Path | None = None
+            if args.preview:
+                renderer = PlacementPreviewRenderer(
+                    board,
+                    cost_config=cost_cfg,
+                    options=PreviewOptions(show_place=not args.hide_place),
+                )
+                preview_svg, preview_png = renderer.write_preview(
+                    result, output_dir=script_path.parent
+                )
         except (FileNotFoundError, ValueError, KeyError, RoutedCopperError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return 2
@@ -179,10 +215,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(
             f"Crossings:    {init_c.airwire_crossings} -> {best_c.airwire_crossings}"
         )
+        print(
+            f"Overlaps:     {init_c.overlap_violations} -> {best_c.overlap_violations}"
+        )
         print(f"Total cost:   {init_c.total_cost:.2f} -> {best_c.total_cost:.2f}")
-        print(f"Audit:        {'PASS (0 violations)' if not result.final_violations else f'FAIL ({len(result.final_violations)} violations)'}")
+        print(
+            f"Audit:        {'PASS (0 violations)' if not result.final_violations else f'FAIL ({len(result.final_violations)} violations)'}"
+        )
         print(f"Script:       {script_path}")
         print(f"Report:       {report_path}")
+        if preview_svg is not None:
+            print(f"Preview SVG:  {preview_svg}")
+        if preview_png is not None:
+            print(f"Preview PNG:  {preview_png}")
         return 0 if not result.final_violations else 1
 
     return 2

@@ -24,6 +24,9 @@ from eagle6_placer.models import (
     KeepoutRegion,
     Net,
     Pin,
+    SilkCircle,
+    SilkLine,
+    SilkRect,
 )
 
 # EAGLE layer numbers used for placement geometry extraction.
@@ -291,6 +294,9 @@ class EagleBoardParser:
         pins: dict[str, Pin] = {}
         keepout_rects: list[Rect2D] = []
         fallback_rects: list[Rect2D] = []
+        silk_lines: list[SilkLine] = []
+        silk_circles: list[SilkCircle] = []
+        silk_rects: list[SilkRect] = []
         is_tht = False
 
         for child in pkg_el:
@@ -340,7 +346,8 @@ class EagleBoardParser:
                     y1 = float(child.attrib["y1"])
                     x2 = float(child.attrib["x2"])
                     y2 = float(child.attrib["y2"])
-                    half_w = 0.5 * float(child.attrib.get("width", "0"))
+                    width = float(child.attrib.get("width", "0"))
+                    half_w = 0.5 * width
                     rect = Rect2D(
                         min(x1, x2) - half_w,
                         min(y1, y2) - half_w,
@@ -351,6 +358,14 @@ class EagleBoardParser:
                         keepout_rects.append(rect)
                     else:
                         fallback_rects.append(rect)
+                        silk_lines.append(
+                            SilkLine(
+                                p1=Point2D(x1, y1),
+                                p2=Point2D(x2, y2),
+                                width_mm=max(width, 0.12),
+                                layer=layer,
+                            )
+                        )
 
             elif tag == "rectangle":
                 layer = int(child.attrib.get("layer", "-1"))
@@ -364,20 +379,29 @@ class EagleBoardParser:
                         keepout_rects.append(rect)
                     else:
                         fallback_rects.append(rect)
+                        silk_rects.append(SilkRect(rect=rect, layer=layer))
 
             elif tag == "circle":
                 layer = int(child.attrib.get("layer", "-1"))
                 if layer in (LAYER_TKEEPOUT, LAYER_BKEEPOUT, LAYER_TPLACE, LAYER_BPLACE):
                     cx = float(child.attrib["x"])
                     cy = float(child.attrib["y"])
-                    r = float(child.attrib["radius"]) + 0.5 * float(
-                        child.attrib.get("width", "0")
-                    )
+                    radius = float(child.attrib["radius"])
+                    width = float(child.attrib.get("width", "0"))
+                    r = radius + 0.5 * width
                     rect = Rect2D(cx - r, cy - r, cx + r, cy + r)
                     if layer in (LAYER_TKEEPOUT, LAYER_BKEEPOUT):
                         keepout_rects.append(rect)
                     else:
                         fallback_rects.append(rect)
+                        silk_circles.append(
+                            SilkCircle(
+                                center=Point2D(cx, cy),
+                                radius_mm=radius,
+                                width_mm=max(width, 0.12),
+                                layer=layer,
+                            )
+                        )
 
         if keepout_rects:
             local_courtyard = Rect2D.union(keepout_rects)
@@ -400,6 +424,9 @@ class EagleBoardParser:
             local_courtyard=local_courtyard,
             is_through_hole=is_tht,
             courtyard_source=courtyard_source,
+            silk_lines=tuple(silk_lines),
+            silk_circles=tuple(silk_circles),
+            silk_rects=tuple(silk_rects),
         )
 
     def _parse_elements(

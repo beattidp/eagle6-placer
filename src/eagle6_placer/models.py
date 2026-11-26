@@ -28,6 +28,34 @@ class Pin:
 
 
 @dataclass(frozen=True)
+class SilkLine:
+    """Package-local silkscreen line segment on ``tPlace`` (21) or ``bPlace`` (22)."""
+
+    p1: Point2D
+    p2: Point2D
+    width_mm: float
+    layer: int
+
+
+@dataclass(frozen=True)
+class SilkCircle:
+    """Package-local silkscreen circle on ``tPlace`` (21) or ``bPlace`` (22)."""
+
+    center: Point2D
+    radius_mm: float
+    width_mm: float
+    layer: int
+
+
+@dataclass(frozen=True)
+class SilkRect:
+    """Package-local silkscreen rectangle on ``tPlace`` (21) or ``bPlace`` (22)."""
+
+    rect: Rect2D
+    layer: int
+
+
+@dataclass(frozen=True)
 class Footprint:
     """Package geometry and courtyard definition in package-local coordinates.
 
@@ -39,6 +67,9 @@ class Footprint:
         is_through_hole: True if the package contains any THT ``<pad>`` or
             ``<hole>``; THT parts occupy both top and bottom placement sides.
         courtyard_source: Provenance string (``"keepout"`` or ``"fallback"``).
+        silk_lines: Package-local ``tPlace``/``bPlace`` line segments.
+        silk_circles: Package-local ``tPlace``/``bPlace`` circles.
+        silk_rects: Package-local ``tPlace``/``bPlace`` rectangles.
     """
 
     library: str
@@ -47,6 +78,9 @@ class Footprint:
     local_courtyard: Rect2D
     is_through_hole: bool
     courtyard_source: str = "fallback"
+    silk_lines: tuple[SilkLine, ...] = ()
+    silk_circles: tuple[SilkCircle, ...] = ()
+    silk_rects: tuple[SilkRect, ...] = ()
 
     @property
     def key(self) -> tuple[str, str]:
@@ -195,11 +229,20 @@ class BoardModel:
         """Return all movable (``locked != "yes"``) components."""
         return [c for c in self.components.values() if not c.is_locked]
 
-    def routed_unlocked_components(self) -> list[str]:
-        """Return sorted names of unlocked components attached to routed nets."""
+    def routed_unlocked_components(self, ignore_pour_nets: bool = True) -> list[str]:
+        """Return sorted names of unlocked components attached to routed nets.
+
+        Args:
+            ignore_pour_nets: When True (default), nets that contain a copper
+                pour ``<polygon>`` (e.g., ``GND``, ``VMOT`` with thermal or
+                stitching vias) are excluded from the routed-copper guard so
+                unrouted signal boards with pour vias can be polished directly.
+        """
         routed_names: set[str] = set()
         for net in self.nets.values():
             if not net.has_routed_copper:
+                continue
+            if ignore_pour_nets and net.has_copper_pour:
                 continue
             for ref in net.contacts:
                 comp = self.components.get(ref.component_name)

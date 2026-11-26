@@ -102,21 +102,48 @@ class ConstraintChecker:
 
         return None
 
-    def is_component_pose_valid(
+    def is_component_hard_valid(
+        self, name: str, pose: ElementTransform
+    ) -> bool:
+        """Check absolute hard invariants (locked, keep-side, board outline).
+
+        Used during soft overlap-legalization when the initial board already
+        contains pre-existing courtyard/hole overlaps: components may never
+        violate locked immutability, board side, or board outline boundaries.
+        """
+        comp = self.board.components[name]
+        if comp.is_locked and pose != comp.initial_pose:
+            return False
+        if not self.allow_mirror and pose.mirrored != comp.initial_pose.mirrored:
+            return False
+        courtyard = comp.courtyard_at(pose)
+        return self.board.outline.contains_courtyard(
+            courtyard, edge_clearance_mm=self.edge_clearance_mm
+        )
+
+    def count_component_soft_violations(
         self,
         name: str,
         pose: ElementTransform,
         state: PlacementState,
         ignore_names: set[str] | None = None,
-    ) -> bool:
-        """Fast boolean feasibility check for placing ``name`` at ``pose``."""
+    ) -> int:
+        """Count hole, keepout, and same-side courtyard overlaps for ``name``."""
         comp = self.board.components[name]
         courtyard = comp.courtyard_at(pose)
-
-        if self._courtyard_conflicts_with_static(comp, pose, courtyard) is not None:
-            return False
-
         sides = comp.occupied_sides(pose)
+        count = 0
+
+        for hole in self.board.holes:
+            if courtyard.overlaps_circle(
+                hole.center, hole.radius_mm + self.hole_clearance_mm
+            ):
+                count += 1
+
+        for keepout in self.board.keepouts:
+            if keepout.side in sides and courtyard.overlaps(keepout.bounds):
+                count += 1
+
         skip = ignore_names or set()
         for other_name, other_comp in self.board.components.items():
             if other_name == name or other_name in skip:
@@ -126,9 +153,26 @@ class ConstraintChecker:
             if not (sides[0] in other_sides or (len(sides) > 1 and sides[1] in other_sides)):
                 continue
             if courtyard.overlaps(other_comp.courtyard_at(other_pose)):
-                return False
+                count += 1
 
-        return True
+        return count
+
+    def is_component_pose_valid(
+        self,
+        name: str,
+        pose: ElementTransform,
+        state: PlacementState,
+        ignore_names: set[str] | None = None,
+    ) -> bool:
+        """Fast boolean feasibility check for placing ``name`` at ``pose``."""
+        if not self.is_component_hard_valid(name, pose):
+            return False
+        return (
+            self.count_component_soft_violations(
+                name, pose, state, ignore_names=ignore_names
+            )
+            == 0
+        )
 
     def is_swap_valid(
         self,

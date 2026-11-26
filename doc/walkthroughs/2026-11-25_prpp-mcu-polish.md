@@ -1,26 +1,28 @@
-# Walkthrough — `prpp-mcu.brd` Local Polish Benchmark (2026-11-25)
+# `prpp-mcu.brd` — Before & After Local Polish Walkthrough (2026-11-25)
 
-## Board Overview
-- **Input:** `tests/fixtures/user-provided/prpp-mcu.brd` (read-only, untouched)
-- **Dimensions:** `50.0 × 35.0 mm`, 2-layer `(1*16)`
-- **Components:** 41 total — **7 locked** (`IC1`, `J1`, `J2`, `J3`, `J4`, `J5`, `X1`), **34 unlocked** (`C1`–`C13`, `R1`–`R15`, `SJ1`–`SJ3`, `U1`–`U3`).
-- **Command:** `eagle6-placer polish tests/fixtures/user-provided/prpp-mcu.brd --allow-routed --steps 6000 --seed 42`
+## Side-by-Side Comparison (`tPlace`/`bPlace` Active)
+![Before and After placement comparison for prpp-mcu.brd with tPlace/bPlace layers](img/prpp-mcu_preview_195700f9.png)
 
-## Before vs. After Metrics
+## Summary Metrics
+- **Input:** `tests/fixtures/user-provided/prpp-mcu.brd` (read-only, untouched; ignored via `.gitignore`)
+- **Command:** `eagle6-placer polish tests/fixtures/user-provided/prpp-mcu.brd --preview --steps 6000 --seed 42`
+- **Board:** `50.0 × 35.0 mm`, 2-layer `(1*16)`, 41 components (**7 locked**: `IC1`, `J1`–`J5`, `X1`; **34 unlocked**: 30 modified).
+- **Pour-net via handling:** Existing `GND` / `VMOT` pour-net vias ignored by default (no `--allow-routed` required; routed signal nets remain guarded).
+
 | Metric | Before | After | Delta |
 | :--- | ---: | ---: | ---: |
-| Weighted MST Wirelength | 513.21 mm | 487.44 mm | -25.77 mm (-5.0%) |
-| Raw MST Wirelength | 765.90 mm | 723.81 mm | -42.09 mm (-5.5%) |
-| Signal Airwire Crossings | 62 | 30 | -32 (-51.6%) |
-| Total Objective Cost | 823.21 | 650.59 | -172.62 (-21.0%) |
-| Courtyard/Hole Violations | 13 | 4 | -9 resolved |
-| EAGLE v6.6.0 Staged DRC Errors | 1 | 1 | 0 new errors |
-| EAGLE v6.6.0 Staged DRC Warnings | 97 | 96 | -1 warning |
+| **Weighted MST Wirelength** | 513.21 mm | 436.60 mm | **-76.61 mm (-14.9%)** |
+| **Raw MST Wirelength** | 765.90 mm | 659.38 mm | **-106.52 mm (-13.9%)** |
+| **Signal Airwire Crossings** | 62 | 30 | **-32 (-51.6%)** |
+| **Courtyard/Hole Overlaps** | 13 | 0 | **-13 (100% legalized)** |
+| **Total Objective Cost** | 4073.21 | 611.40 | **-3461.81** |
+| **Constraint Audit** | FAIL (13) | **PASS (0)** | **0 violations** |
+| **EAGLE v6.6.0 Staged DRC Errors** | 1 | 1 | **0 new errors** |
 
-## Key Findings
-1. `U3` (FT230XS) rotated `R90 → R0`, aligning USB and UART pins directly between `J5` and `U1` and cutting signal airwire crossings in half (`62 → 30`).
-2. `validate_edit_script` in real CadSoft EAGLE v6.6.0 confirmed `exit_code=0`, all 28 placement changes applied accurately (including bottom-side `SJ2` `MR90 → MR270` and `SJ3` `MR90 → MR0`), and 0 new DRC errors.
-3. Three actionable Phase 1.1 refinements surfaced from this real board:
-   - Penalize pre-existing courtyard overlaps so wedged parts (`C7`, `C8`, `R5`) are actively legalized.
-   - Distinguish pour-net thermal/stitching vias (`GND`, `VMOT`) from routed signal traces in the routed-copper guard.
-   - Support auto-detecting or specifying `--proximity-group` for decoupling caps.
+## Notable Placement Improvements
+- **Zero-Overlap Legalization (`13 → 0`):** All 13 pre-existing courtyard and mounting-hole overlaps—including `C7`, `C8`, and `R5` originally wedged between locked `IC1` and `J4`—were cleanly separated with zero violations.
+- **`U1` (STM32, TSSOP20) & `U2` (SO-8):** `U1` rotated `R0 → R270` and `U2` rotated `R270 → R90`, aligning pins directly toward `IC1` and `U2` and cutting raw MST wirelength by `106.5 mm` and airwire crossings in half (`62 → 30`).
+- **Invariants Preserved:** All 7 locked parts (`IC1`, `J1`–`J5`, `X1`) stayed strictly immobile, and bottom-side solder jumpers (`SJ1`–`SJ3`) stayed on the bottom layer.
+
+## Staged Verification
+Dry-run of the generated `.scr` script via `eagle6-mcp` (`validate_edit_script` with `run_checks=true`) exited `0` (`success=true`), applied all 30 moves/rotations accurately in real CadSoft EAGLE v6.6.0, and introduced **0 new DRC errors**.
