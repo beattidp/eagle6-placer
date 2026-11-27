@@ -148,8 +148,8 @@ The `--preview` image displays **BEFORE** (left) and **AFTER** (right) with:
 1. **Review the Preview & JSON Report:** Confirm wirelength/crossing improvements, `constraint_audit.passed == true`, and reasonable component positions.
 2. **Staged Dry-Run (via sibling `eagle6-mcp`):**
    - Run `validate_edit_script` on your `.brd` with the generated `_placed.scr` content to execute it inside headless EAGLE v6.6.0 on an isolated copy and inspect `drc_delta`.
-3. **Optional Autorouting Benchmark (via sibling `eagle6-freerouting`):**
-   - Route the staged board to compare actual unrouted airwires, via count, and trace length.
+3. **Optional Closed-Loop Autorouting Benchmark (via sibling `eagle6-freerouting` & `eagle6-workflow`):**
+   - Run with `--candidates 3` (or `5`) and `--keep-all-candidates` to emit `candidates_manifest.json`, then rank candidates by actual FreeRouting completion, EAGLE DRC errors, and via count using the sibling `eagle6-workflow` harness (`eagle6-workflow run configs/experiments.yaml`). Empirical tests on `prpp-mcu_scattered.brd` confirmed that Placer Rank #2/#3 can beat Rank #1 on real routability and via count.
 4. **Apply in EAGLE GUI (with full Undo):**
    - Open your `.brd` in CadSoft EAGLE v6.6.0.
    - In the EAGLE command bar, run:
